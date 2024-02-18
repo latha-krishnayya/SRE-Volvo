@@ -1,0 +1,50 @@
+pipeline {
+    agent {
+        label 'any'
+    }
+    environment {
+        DEPLOYMENT_NAME = 'deployment/welcomeapp'
+        IMAGE_NAME = 'welcomeapp'
+        NAMESPACE = 'default'
+        REPO = 'snehalathanama/welcomeapp'
+        SERVICE_MANIFEST = 'config/deployment.yaml'
+        TAG = "${sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
+        IMAGE = "${env.REPO}/${env.IMAGE_NAME}"
+    }
+    
+    stages {
+        stage('Clone repo') {
+            steps {
+                script {
+                    currentBuild.displayName = "${IMAGE_NAME}:${TAG}"
+                    currentBuild.description =
+                        sh(script: 'git log -1 --pretty=%B | head -n 1', returnStdout: true).trim()
+                }
+                echo 'Done'
+            }
+        }
+        stage('Build image') {
+            steps {
+                sh "docker build --tag \"${IMAGE}:${TAG}\" --tag \"${IMAGE}:latest\" ."
+            }
+        }
+        stage('Push image') {
+            steps {
+                sh "docker push ${IMAGE}"
+            }
+        }
+        stage('Build clean up') {
+            steps {
+                sh "docker image rm \"${IMAGE}:${TAG}\""
+            }
+        }
+        stage('Deploy service') {
+            steps {
+                sh '''
+                    kubectl apply -f "${SERVICE_MANIFEST}" --namespace="${NAMESPACE}"
+                    kubectl rollout restart "${DEPLOYMENT_NAME}" --namespace="${NAMESPACE}"
+                '''
+            }
+        }
+    }
+}
